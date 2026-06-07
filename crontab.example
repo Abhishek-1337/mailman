@@ -1,0 +1,6 @@
+# Linux/macOS crontab entry — runs every 3 hours at :07 minutes.
+# Install:  crontab -e   then paste the line below, then save.
+# Inspect:  crontab -l
+
+# m  h  dom mon dow  command
+  7  */3 *   *   *    cd /Users/abhishekvishwakarma/Ideas/mailman && /path/to/venv/bin/python -m src.main >> logs/cron.log 2>&1

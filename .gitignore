@@ -1,0 +1,24 @@
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+env/
+
+# Secrets & credentials
+.env
+credentials/
+*.token.json
+*.credentials.json
+client_secret*.json
+
+# Local data
+data/state.db
+data/state.db-journal
+logs/
+*.log
+
+# IDE
+.idea/
+.vscode/
+.DS_Store
