@@ -54,6 +54,7 @@ class Config:
 
     state_db_path: Path
     lookback_hours: int
+    gmail_max_results: int
     log_level: str
     dry_run: bool
 
@@ -70,6 +71,7 @@ def load_config() -> Config:
         sheet_tab_name=_get("SHEET_TAB_NAME", "Applications"),
         state_db_path=_get_path("STATE_DB_PATH", "./data/state.db"),
         lookback_hours=_get_int("LOOKBACK_HOURS", 4),
+        gmail_max_results=_get_int("GMAIL_MAX_RESULTS", 100),
         log_level=_get("LOG_LEVEL", "INFO"),
         dry_run=_get_bool("DRY_RUN", False),
     )

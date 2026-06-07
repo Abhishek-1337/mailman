@@ -2,6 +2,9 @@
 from __future__ import annotations
 
 import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.config import PROJECT_ROOT, configure_logging, load_config
 from src.gmail_client import GmailClient

@@ -6,6 +6,9 @@ import sys
 import traceback
 from datetime import datetime, time, timedelta, timezone
 from email.utils import getaddresses
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from .config import Config, configure_logging, load_config
 from .gmail_client import GmailClient
@@ -54,7 +57,7 @@ def run() -> int:
 
     sheets.ensure_tab()
 
-    messages = gmail.list_messages(since=cutoff, max_results=100)
+    messages = gmail.list_messages(since=cutoff, max_results=cfg.gmail_max_results)
     if not messages:
         log.info("No candidate messages; exiting cleanly")
         _mark_run(state, cutoff)

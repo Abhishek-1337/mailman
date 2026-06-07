@@ -5,6 +5,9 @@ Run once, then copy the printed SHEET_ID value into your .env.
 from __future__ import annotations
 
 import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from googleapiclient.discovery import build
 

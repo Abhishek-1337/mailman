@@ -53,19 +53,24 @@ class GmailClient:
 
     def list_messages(
         self,
-        since: datetime,
+        since: Optional[datetime] = None,
         max_results: int = 100,
         extra_query: Optional[str] = None,
     ) -> List[EmailMessage]:
-        """Return up to `max_results` messages received at/after `since`.
+        """Return up to `max_results` messages. If `since` is provided, only
+        messages at/after that date are returned. Otherwise fetches the latest
+        `max_results` messages regardless of date.
 
         `extra_query` lets callers add Gmail search operators (e.g. subject filters).
         """
-        if since.tzinfo is None:
-            since = since.replace(tzinfo=timezone.utc)
-        # Gmail's `after:` operator uses YYYY/MM/DD and is inclusive.
-        date_part = f"after:{since.strftime('%Y/%m/%d')}"
-        query = f"{date_part} {extra_query}".strip() if extra_query else date_part
+        if since is not None:
+            if since.tzinfo is None:
+                since = since.replace(tzinfo=timezone.utc)
+            # Gmail's `after:` operator uses YYYY/MM/DD and is inclusive.
+            date_part = f"after:{since.strftime('%Y/%m/%d')}"
+            query = f"{date_part} {extra_query}".strip() if extra_query else date_part
+        else:
+            query = extra_query or ""
 
         log.info("Gmail search query: %r", query)
         try:
