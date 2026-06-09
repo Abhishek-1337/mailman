@@ -1,0 +1,49 @@
+name: Mailman
+
+on:
+  schedule:
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: mailman
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Restore state database
+        uses: actions/cache@v4
+        with:
+          path: data/
+          key: mailman-state-${{ github.run_id }}
+          restore-keys: mailman-state-
+
+      - name: Setup credentials
+        run: |
+          mkdir -p credentials
+          echo "${{ secrets.GMAIL_CREDENTIALS_JSON }}" | base64 -d > credentials/gmail_credentials.json
+          echo "${{ secrets.GMAIL_TOKEN_JSON }}" | base64 -d > credentials/gmail_token.json
+          echo "${{ secrets.SHEETS_TOKEN_JSON }}" | base64 -d > credentials/sheets_token.json
+
+      - name: Run mailman
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          SHEET_ID: ${{ secrets.SHEET_ID }}
+          SHEET_TAB_NAME: Applications
+          LOOKBACK_HOURS: 4
+          GMAIL_MAX_RESULTS: 100
+          LOG_LEVEL: INFO
+          DRY_RUN: false
+        run: python -m src.main
