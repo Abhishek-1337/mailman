@@ -61,13 +61,13 @@ class Config:
 
 def load_config() -> Config:
     return Config(
-        openai_api_key=_get("OPENAI_API_KEY", required=True),
+        openai_api_key=_get("OPENAI_API_KEY"),
         openai_model=_get("OPENAI_MODEL", "gpt-4o-mini"),
         gmail_credentials_path=_get_path("GMAIL_CREDENTIALS_PATH", "./credentials/gmail_credentials.json"),
         gmail_token_path=_get_path("GMAIL_TOKEN_PATH", "./credentials/gmail_token.json"),
         sheets_credentials_path=_get_path("SHEETS_CREDENTIALS_PATH", "./credentials/sheets_credentials.json"),
         sheets_token_path=_get_path("SHEETS_TOKEN_PATH", "./credentials/sheets_token.json"),
-        sheet_id=_get("SHEET_ID", required=True),
+        sheet_id=_get("SHEET_ID"),
         sheet_tab_name=_get("SHEET_TAB_NAME", "Applications"),
         state_db_path=_get_path("STATE_DB_PATH", "./data/state.db"),
         lookback_hours=_get_int("LOOKBACK_HOURS", 4),
