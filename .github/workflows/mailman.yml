@@ -30,6 +30,29 @@ jobs:
           key: mailman-state-${{ github.run_id }}
           restore-keys: mailman-state-
 
+      - name: Validate required secrets
+        env:
+          GMAIL_CREDENTIALS_JSON: ${{ secrets.GMAIL_CREDENTIALS_JSON }}
+          GMAIL_TOKEN_JSON: ${{ secrets.GMAIL_TOKEN_JSON }}
+          SHEETS_TOKEN_JSON: ${{ secrets.SHEETS_TOKEN_JSON }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          SHEET_ID: ${{ secrets.SHEET_ID }}
+        run: |
+          missing=()
+          [ -z "$GMAIL_CREDENTIALS_JSON" ] && missing+=("GMAIL_CREDENTIALS_JSON")
+          [ -z "$GMAIL_TOKEN_JSON" ]        && missing+=("GMAIL_TOKEN_JSON")
+          [ -z "$SHEETS_TOKEN_JSON" ]       && missing+=("SHEETS_TOKEN_JSON")
+          [ -z "$OPENAI_API_KEY" ]          && missing+=("OPENAI_API_KEY")
+          [ -z "$SHEET_ID" ]               && missing+=("SHEET_ID")
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "ERROR: Missing required GitHub secrets: ${missing[*]}"
+            echo "Run the auth scripts locally, base64-encode each token file, and add them as secrets:"
+            echo "  base64 -i credentials/gmail_credentials.json | tr -d '\\n'"
+            echo "  base64 -i credentials/gmail_token.json | tr -d '\\n'"
+            echo "  base64 -i credentials/sheets_token.json | tr -d '\\n'"
+            exit 1
+          fi
+
       - name: Setup credentials
         env:
           GMAIL_CREDENTIALS_JSON: ${{ secrets.GMAIL_CREDENTIALS_JSON }}

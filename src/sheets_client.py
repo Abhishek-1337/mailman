@@ -34,8 +34,12 @@ COL_INDEX = {name: i + 1 for i, name in enumerate(COLUMNS)}
 
 def _ensure_credentials(credentials_path: Path, token_path: Path) -> Credentials:
     creds: Optional[Credentials] = None
-    if token_path.exists():
-        creds = Credentials.from_authorized_user_file(str(token_path), SHEETS_SCOPES)
+    if token_path.exists() and token_path.stat().st_size > 0:
+        try:
+            creds = Credentials.from_authorized_user_file(str(token_path), SHEETS_SCOPES)
+        except Exception as exc:
+            log.warning("Sheets token file is corrupt or invalid (%s); treating as missing.", exc)
+            creds = None
     if creds and creds.expired and creds.refresh_token:
         log.info("Refreshing Sheets access token")
         creds.refresh(Request())
