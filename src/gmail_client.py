@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import base64
 import logging
+import os
 from datetime import datetime, timezone
 from email.utils import getaddresses, parsedate_to_datetime
 from pathlib import Path
@@ -33,6 +34,12 @@ def _ensure_credentials(credentials_path: Path, token_path: Path) -> Credentials
         creds.refresh(Request())
         token_path.write_text(creds.to_json())
     if not creds or not creds.valid:
+        if os.getenv("CI"):
+            raise RuntimeError(
+                f"Gmail token at {token_path} is invalid or missing and could not be refreshed. "
+                "Run scripts/auth_gmail.py locally to generate a fresh token, "
+                "then base64-encode the file and update the GMAIL_TOKEN_JSON secret."
+            )
         if not credentials_path.exists():
             raise FileNotFoundError(
                 f"Gmail credentials.json not found at {credentials_path}. "

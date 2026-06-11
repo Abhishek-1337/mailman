@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
 from typing import List, Optional, Sequence, Tuple
 
@@ -40,6 +41,12 @@ def _ensure_credentials(credentials_path: Path, token_path: Path) -> Credentials
         creds.refresh(Request())
         token_path.write_text(creds.to_json())
     if not creds or not creds.valid:
+        if os.getenv("CI"):
+            raise RuntimeError(
+                f"Sheets token at {token_path} is invalid or missing and could not be refreshed. "
+                "Run scripts/auth_sheets.py locally to generate a fresh token, "
+                "then base64-encode the file and update the SHEETS_TOKEN_JSON secret."
+            )
         if not credentials_path.exists():
             raise FileNotFoundError(
                 f"Sheets credentials.json not found at {credentials_path}."

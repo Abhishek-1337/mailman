@@ -31,11 +31,24 @@ jobs:
           restore-keys: mailman-state-
 
       - name: Setup credentials
+        env:
+          GMAIL_CREDENTIALS_JSON: ${{ secrets.GMAIL_CREDENTIALS_JSON }}
+          GMAIL_TOKEN_JSON: ${{ secrets.GMAIL_TOKEN_JSON }}
+          SHEETS_TOKEN_JSON: ${{ secrets.SHEETS_TOKEN_JSON }}
+          SHEETS_CREDENTIALS_JSON: ${{ secrets.SHEETS_CREDENTIALS_JSON }}
         run: |
           mkdir -p credentials
-          echo "${{ secrets.GMAIL_CREDENTIALS_JSON }}" | base64 -d > credentials/gmail_credentials.json
-          echo "${{ secrets.GMAIL_TOKEN_JSON }}" | base64 -d > credentials/gmail_token.json
-          echo "${{ secrets.SHEETS_TOKEN_JSON }}" | base64 -d > credentials/sheets_token.json
+          printf '%s' "$GMAIL_CREDENTIALS_JSON" | base64 -d > credentials/gmail_credentials.json
+          printf '%s' "$GMAIL_TOKEN_JSON"        | base64 -d > credentials/gmail_token.json
+          printf '%s' "$SHEETS_TOKEN_JSON"       | base64 -d > credentials/sheets_token.json
+          # sheets_credentials.json is needed only if the Sheets token must be re-issued.
+          # If you use the same OAuth client for both APIs, SHEETS_CREDENTIALS_JSON can
+          # be the same base64 value as GMAIL_CREDENTIALS_JSON.
+          if [ -n "$SHEETS_CREDENTIALS_JSON" ]; then
+            printf '%s' "$SHEETS_CREDENTIALS_JSON" | base64 -d > credentials/sheets_credentials.json
+          else
+            cp credentials/gmail_credentials.json credentials/sheets_credentials.json
+          fi
 
       - name: Run mailman
         env:
