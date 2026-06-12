@@ -12,6 +12,7 @@ concurrency:
 jobs:
   run:
     runs-on: ubuntu-latest
+    environment: Mailman secrets
     steps:
       - uses: actions/checkout@v4
 
