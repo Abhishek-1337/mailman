@@ -11,6 +11,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from .config import Config, configure_logging, load_config
+from .classifier import JevClassifier
 from .gmail_client import GmailClient
 from .llm import JobExtractor
 from .models import EmailMessage, JobAction, JobApplication, JobStatus, LLMResult
@@ -64,6 +65,15 @@ def run() -> int:
         return 0
 
     extractor = JobExtractor(cfg.openai_api_key, cfg.openai_model)
+    jev = (
+        JevClassifier(cfg.typesafe_api_key, cfg.typesafe_model, cfg.typesafe_endpoint)
+        if cfg.typesafe_api_key
+        else None
+    )
+    if jev:
+        log.info("Jev pre-filter enabled (model=%s threshold=%.2f)", cfg.typesafe_model, cfg.jev_threshold)
+    else:
+        log.info("Jev pre-filter disabled (no TYPESAFE_API_KEY); using LLM-only")
 
     new_count = 0
     updated_count = 0
@@ -77,6 +87,8 @@ def run() -> int:
                 extractor=extractor,
                 sheets=sheets,
                 dry_run=cfg.dry_run,
+                jev=jev,
+                jev_threshold=cfg.jev_threshold,
             )
         except Exception:
             log.exception("Unhandled error processing %s: %s", msg.message_id, traceback.format_exc())
@@ -111,6 +123,8 @@ def _process_message(
     extractor: JobExtractor,
     sheets: SheetsClient,
     dry_run: bool,
+    jev: JevClassifier | None = None,
+    jev_threshold: float = 0.7,
 ) -> str:
     """Returns 'new' | 'updated' | 'skipped'."""
     if state.is_processed(msg.message_id):
@@ -118,6 +132,8 @@ def _process_message(
         return "skipped"
 
     log.info("Classifying msg=%s subject=%r", msg.message_id, msg.subject[:80])
+    if jev is not None and not _jev_passes(msg, jev, state, jev_threshold):
+        return "skipped"  # _jev_passes already recorded the skip
     result = extractor.extract(msg)
     if result is None:
         log.info("Skip %s: LLM extraction failed", msg.message_id)
@@ -164,6 +180,32 @@ def _process_message(
     sheets.append(app)
     state.mark_processed(msg.message_id, action="appended")
     return "new"
+
+
+def _jev_passes(msg: EmailMessage, jev: JevClassifier, state: StateStore, threshold: float) -> bool:
+    """Jev gate: True = proceed to LLM extraction. False = skipped (already recorded).
+
+    - irrelevant with confidence >= threshold -> skip without spending an LLM call.
+    - job-related OR low-confidence -> proceed to LLM (LLM keeps its own
+      confidence check, so recall is preserved).
+    - Jev error (None) -> proceed to LLM (fail-open).
+    """
+    decision = jev.classify(msg)
+    if decision is None:
+        log.debug("Jev unclear for %s; falling back to LLM", msg.message_id)
+        return True
+    if not decision.is_job_related and decision.probability >= threshold:
+        log.info(
+            "Skip %s: Jev irrelevant (p=%.2f conf=%.2f)",
+            msg.message_id, decision.probability, decision.confidence,
+        )
+        state.mark_processed(msg.message_id, action="irrelevant_jev")
+        return False
+    log.debug(
+        "Jev pass %s: action=%s p=%.2f",
+        msg.message_id, decision.action.value, decision.probability,
+    )
+    return True
 
 
 def _build_app(msg: EmailMessage, result: LLMResult, platform: str) -> JobApplication:

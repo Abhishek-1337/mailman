@@ -45,6 +45,12 @@ class Config:
     openai_api_key: str
     openai_model: str
 
+    # Jev pre-filter (TypeSafe System One). Empty key = disabled, LLM-only as before.
+    typesafe_api_key: str
+    typesafe_model: str
+    typesafe_endpoint: str
+    jev_threshold: float
+
     gmail_credentials_path: Path
     gmail_token_path: Path
     sheets_credentials_path: Path
@@ -59,10 +65,22 @@ class Config:
     dry_run: bool
 
 
+def _get_float(name: str, default: float) -> float:
+    raw = _get(name, str(default))
+    try:
+        return float(raw)
+    except ValueError as exc:
+        raise RuntimeError(f"Env var {name} must be a number, got {raw!r}") from exc
+
+
 def load_config() -> Config:
     return Config(
         openai_api_key=_get("OPENAI_API_KEY"),
         openai_model=_get("OPENAI_MODEL", "gpt-4o-mini"),
+        typesafe_api_key=_get("TYPESAFE_API_KEY"),
+        typesafe_model=_get("TYPESAFE_MODEL", "jev-latest"),
+        typesafe_endpoint=_get("TYPESAFE_ENDPOINT", "https://api.typesafe.ai/v1/systemone"),
+        jev_threshold=_get_float("JEV_THRESHOLD", 0.7),
         gmail_credentials_path=_get_path("GMAIL_CREDENTIALS_PATH", "./credentials/gmail_credentials.json"),
         gmail_token_path=_get_path("GMAIL_TOKEN_PATH", "./credentials/gmail_token.json"),
         sheets_credentials_path=_get_path("SHEETS_CREDENTIALS_PATH", "./credentials/sheets_credentials.json"),
