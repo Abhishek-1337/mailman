@@ -31,6 +31,22 @@ COLUMNS: Tuple[str, ...] = (
 )
 COL_INDEX = {name: i + 1 for i, name in enumerate(COLUMNS)}
 
+# Status -> (background hex, text hex) used for conditional formatting of the
+# Status column (E). Green = Offer, red = Rejected, others aid scanning.
+STATUS_COLORS = {
+    JobStatus.APPLIED: ("#F1F3F4", "#5F6368"),
+    JobStatus.SHORTLISTED: ("#FEF7E0", "#B06000"),
+    JobStatus.ASSESSMENT: ("#FEEFC3", "#E8710A"),
+    JobStatus.INTERVIEW: ("#E8F0FE", "#1967D2"),
+    JobStatus.OFFER: ("#E6F4EA", "#137333"),
+    JobStatus.REJECTED: ("#FCE8E6", "#A50E0E"),
+    JobStatus.WITHDRAWN: ("#F1F3F4", "#80868B"),
+}
+
+# Values that must never trigger a company match on their own: every email
+# the LLM could not attribute would otherwise collapse into a single row.
+_UNMATCHABLE_COMPANIES = frozenset({"", "unknown"})
+
 
 def _ensure_credentials(credentials_path: Path, token_path: Path) -> Credentials:
     creds: Optional[Credentials] = None
@@ -102,6 +118,58 @@ class SheetsClient:
                 body={"values": [list(COLUMNS)]},
             ).execute()
 
+        self.ensure_status_formatting()
+
+    def ensure_status_formatting(self) -> None:
+        """Color the Status column (E) by value via conditional formatting.
+
+        Green for Offer, red for Rejected, plus distinct colors for the other
+        statuses (see STATUS_COLORS). Idempotent: only rules not already
+        present are added. Best-effort — a failure here logs a warning and
+        never breaks a mail run.
+        """
+        try:
+            meta = self._service.spreadsheets().get(
+                spreadsheetId=self.sheet_id,
+                fields="sheets(properties(sheetId,title),conditionalFormats)",
+            ).execute()
+        except HttpError as exc:
+            log.warning("Skipping status coloring: metadata fetch failed: %s", exc)
+            return
+        sheet_numeric_id: Optional[int] = None
+        existing_values: set[str] = set()
+        for sheet in meta.get("sheets", []):
+            props = sheet.get("properties", {})
+            if props.get("title") != self.tab_name:
+                continue
+            sheet_numeric_id = props.get("sheetId")
+            for fmt in sheet.get("conditionalFormats", []) or []:
+                rule = fmt.get("rule", {})
+                cond = rule.get("booleanRule", {}).get("condition", {})
+                if cond.get("type") != "TEXT_EQ":
+                    continue
+                ranges = rule.get("ranges", [])
+                if not _covers_status_column(ranges, sheet_numeric_id):
+                    continue
+                for value in cond.get("values", []) or []:
+                    if value.get("userEnteredValue"):
+                        existing_values.add(value["userEnteredValue"])
+        if sheet_numeric_id is None:
+            log.warning("Skipping status coloring: tab %r not found", self.tab_name)
+            return
+        missing = [s for s in STATUS_COLORS if s.value not in existing_values]
+        if not missing:
+            return
+        requests = status_format_requests(sheet_numeric_id, missing)
+        log.info("Adding %d status color rule(s) to %r", len(requests), self.tab_name)
+        try:
+            self._service.spreadsheets().batchUpdate(
+                spreadsheetId=self.sheet_id,
+                body={"requests": requests},
+            ).execute()
+        except HttpError as exc:
+            log.warning("Skipping status coloring: batchUpdate failed: %s", exc)
+
     def list_rows(self) -> List[List[str]]:
         result = self._service.spreadsheets().values().get(
             spreadsheetId=self.sheet_id,
@@ -112,18 +180,20 @@ class SheetsClient:
         width = len(COLUMNS)
         return [r + [""] * (width - len(r)) for r in rows]
 
-    def find_row(self, company: str, role: str) -> Optional[int]:
+    def find_row(self, company: str, role: str | None = None) -> Optional[int]:
         """Return 1-based row number (in the sheet, including header) of a matching
-        company+role, or None. Matching is case-insensitive and whitespace-normalized."""
+        company, or None. Matching is company-only and case-insensitive with
+        whitespace normalized, so the same company never gets a second row for
+        a different role. `role` is accepted for backward compatibility and
+        ignored. Companies that normalize to "" or "unknown" never match."""
         rows = self.list_rows()
         c_target = _norm(company)
-        r_target = _norm(role)
+        if c_target in _UNMATCHABLE_COMPANIES:
+            return None
         for idx, row in enumerate(rows[1:], start=2):  # skip header
-            if len(row) < 3:
+            if len(row) < COL_INDEX["Company"]:
                 continue
-            if _norm(row[COL_INDEX["Company"] - 1]) == c_target and _norm(
-                row[COL_INDEX["Role"] - 1]
-            ) == r_target:
+            if _norm(row[COL_INDEX["Company"] - 1]) == c_target:
                 return idx
         return None
 
@@ -165,6 +235,76 @@ def _row_from_app(app: JobApplication) -> List[str]:
 
 def _norm(s: str) -> str:
     return " ".join((s or "").strip().lower().split())
+
+
+def normalize_name(s: str) -> str:
+    """Case-insensitive, whitespace-normalized comparison key for names."""
+    return _norm(s)
+
+
+def _hex_to_rgb(h: str) -> dict:
+    h = h.lstrip("#")
+    return {
+        "red": int(h[0:2], 16) / 255.0,
+        "green": int(h[2:4], 16) / 255.0,
+        "blue": int(h[4:6], 16) / 255.0,
+    }
+
+
+def status_format_requests(
+    sheet_numeric_id: int, statuses: Sequence[JobStatus] | None = None
+) -> List[dict]:
+    """Build addConditionalFormatRule requests coloring the Status column (E).
+
+    Covers E2:E (header excluded) with one TEXT_EQ rule per status.
+    """
+    requests: List[dict] = []
+    for status in STATUS_COLORS if statuses is None else statuses:
+        bg, fg = STATUS_COLORS[status]
+        requests.append(
+            {
+                "addConditionalFormatRule": {
+                    "rule": {
+                        "ranges": [
+                            {
+                                "sheetId": sheet_numeric_id,
+                                "startRowIndex": 1,
+                                "startColumnIndex": COL_INDEX["Status"] - 1,
+                                "endColumnIndex": COL_INDEX["Status"],
+                            }
+                        ],
+                        "booleanRule": {
+                            "condition": {
+                                "type": "TEXT_EQ",
+                                "values": [{"userEnteredValue": status.value}],
+                            },
+                            "format": {
+                                "backgroundColor": _hex_to_rgb(bg),
+                                "textFormat": {
+                                    "foregroundColor": _hex_to_rgb(fg),
+                                    "bold": True,
+                                },
+                            },
+                        },
+                    },
+                    "index": 0,
+                }
+            }
+        )
+    return requests
+
+
+def _covers_status_column(ranges: Sequence[dict], sheet_numeric_id: int | None) -> bool:
+    """True if any grid range covers the Status column (E) of our tab."""
+    col = COL_INDEX["Status"] - 1
+    for rng in ranges:
+        if rng.get("sheetId") != sheet_numeric_id:
+            continue
+        start_col = rng.get("startColumnIndex", 0)
+        end_col = rng.get("endColumnIndex", 0)
+        if start_col <= col < (end_col or col + 1):
+            return True
+    return False
 
 
 def app_from_parts(
