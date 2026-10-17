@@ -19,6 +19,7 @@ from .sheets_client import (
     COLUMNS,
     SheetsClient,
     app_from_parts,
+    normalize_name,
     row_to_app,
 )
 from .state import StateStore
@@ -162,7 +163,14 @@ def _process_message(
 
     if row_idx:
         existing = row_to_app(sheets.list_rows()[row_idx - 1])
-        # Preserve original Date Applied; only refresh status/last_update/notes/subject
+        # One row per company: preserve the original Date Applied, Company,
+        # Role, and Platform; only refresh status/last_update/notes/subject.
+        # A different incoming role is recorded in Notes so no info is lost.
+        notes = existing.notes
+        if normalize_name(app.role) not in ("", "unknown") and normalize_name(
+            app.role
+        ) != normalize_name(existing.role):
+            notes = _append_note(notes, f"Also seen as role: {app.role}")
         merged = JobApplication(
             date_applied=existing.date_applied or app.date_applied,
             company=existing.company or app.company,
@@ -170,7 +178,7 @@ def _process_message(
             platform=existing.platform or app.platform,
             status=_bump_status(existing.status, app.status),
             last_update=app.last_update,
-            notes=_append_note(existing.notes, result.reasoning),
+            notes=_append_note(notes, result.reasoning),
             email_subject=app.email_subject or existing.email_subject,
         )
         sheets.update(row_idx, merged)
