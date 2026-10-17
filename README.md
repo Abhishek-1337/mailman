@@ -25,11 +25,15 @@ Gmail  ─►  OpenAI  ─►  Google Sheets
    - `company`, `role`, `platform` (LinkedIn / Greenhouse / Lever / …)
    - `status` (Applied / Shortlisted / Interview / Assessment / Offer / Rejected / Withdrawn / Unknown)
    - `confidence`, `reasoning`
-4. In Google Sheets:
-   - If a row with the same `Company + Role` exists → update its Status,
+4. In Google Sheets (one row per company):
+   - If a row with the same `Company` exists → update its Status,
      Last Update, Notes, and Email Subject (preserving the original Date
-     Applied).
+     Applied, Role, and Platform; a different incoming role is recorded in
+     Notes).
    - Otherwise → append a new row.
+   - The Status column is color-coded via conditional formatting: green
+     for Offer, red for Rejected, plus distinct colors for Applied,
+     Shortlisted, Assessment, Interview, and Withdrawn.
 5. Updates the SQLite state DB with the new `last_run` cursor and a record
    of every processed message id.
 
